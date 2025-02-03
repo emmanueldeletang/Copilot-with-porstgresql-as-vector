@@ -1,0 +1,12 @@
+CREATE EXTENSION azure_ai;
+CREATE EXTENSION vector;
+-- if diskann is enable do 
+CREATE EXTENSION IF NOT EXISTS pg_diskann CASCADE;
+
+
+select azure_ai.set_setting('azure_openai.endpoint', 'https://ccccccccopenai.azure.com/'); 
+select azure_ai.set_setting('azure_openai.subscription_key', 'wwwwwwwwwwwwwwww');
+
+
+
+
