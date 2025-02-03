@@ -15,7 +15,9 @@ import datetime
 import glob
 import time
 import uuid
+import re
 import csv
+import string
 from dotenv import load_dotenv
 from openai import AzureOpenAI
 from tenacity import retry, wait_random_exponential, stop_after_attempt
@@ -134,6 +136,7 @@ def loadpdffile(name,file) :
     try:
         for d in docs : 
             data = str(d)
+            print(data)
             conn = get_db_connection()
             cur = conn.cursor()
             cur.execute('INSERT INTO data (filename, typefile,chuncks)'
@@ -182,6 +185,7 @@ def loadjsonfile(name,file):
         docu = json.load(file)
         for row in docu:
             data = json.dumps(row)
+            print (data)
             conn = get_db_connection()
             cur = conn.cursor()
             cur.execute('INSERT INTO data (filename, typefile,chuncks)'
@@ -228,7 +232,7 @@ def get_completion(openai_client, model, prompt: str):
     response = openai_client.chat.completions.create(
         model = model,
         messages =   prompt,
-        temperature = 0.1
+        temperature = 0.25
         
     )   
     
@@ -334,7 +338,12 @@ def  ask_dbvector(textuser):
     cur.execute(query)
     resutls = str(cur.fetchall())
 
-    return resutls 
+                       
+    chars = re.escape(string.punctuation)
+    res = re.sub('['+chars+']', '',resutls)                        
+                         
+  
+    return res
 
 
 
@@ -423,35 +432,40 @@ def main():
                 absolute_file_path = os.path.abspath(uploaded_file.name)
                 st.write(f"Le chemin absolu du fichier est : {absolute_file_path}")
                 
-                if ".doc" in uploaded_file.name:
-                    st.write("Le fichier est un document pdf"+ uploaded_file.name )
-                    name = uploaded_file.name.replace('.doc', '')
-                    loadwordfile(name,absolute_file_path )
-                    st.write("Le fichier est charge" +uploaded_file.name )
-                   
-                    st.write("Le fichier est un document Word.")
-                elif ".pdf" in uploaded_file.name:
-                    st.write("Le fichier est un document pdf"+ uploaded_file.name )
-                    name = uploaded_file.name.replace('.pdf', '')
-                    loadpdffile(name,absolute_file_path )
-                    st.write("Le fichier est charge" +uploaded_file.name )
-                   
-                elif ".json" in uploaded_file.name:
-                    st.write("Le fichier est un document csv"+ uploaded_file.name )
-                    name = uploaded_file.name.replace('.json', '')
-                    loadjsonfile(name,uploaded_file.name)
-                    st.write("Le fichier est charge" +uploaded_file.name )
-                   
+                
+                if st.button("load data "):
+                    st.write("start the operation")
                     
-                    st.write("Le fichier est un document JSON." + uploaded_file.name )
-                elif ".csv" in uploaded_file.name:
-                    st.write("Le fichier est un document csv"+ uploaded_file.name )
-                    name = uploaded_file.name.replace('.csv', '')
-                    loadcsvfile(name,uploaded_file.name)
-                    st.write("Le fichier est charge" +uploaded_file.name )
-                   
-                os.remove(absolute_file_path)
-                st.write(f"Le fichier temporaire {absolute_file_path} a été supprimé.")
+                
+                    if ".doc" in uploaded_file.name:
+                        st.write("Le fichier est un document pdf"+ uploaded_file.name )
+                        name = uploaded_file.name.replace('.doc', '')
+                        loadwordfile(name,absolute_file_path )
+                        st.write("Le fichier est charge" +uploaded_file.name )
+                    
+                        st.write("Le fichier est un document Word.")
+                    elif ".pdf" in uploaded_file.name:
+                        st.write("Le fichier est un document pdf"+ uploaded_file.name )
+                        name = uploaded_file.name.replace('.pdf', '')
+                        loadpdffile(name,absolute_file_path )
+                        st.write("Le fichier est charge" +uploaded_file.name )
+                    
+                    elif ".json" in uploaded_file.name:
+                        st.write("Le fichier est un document csv"+ uploaded_file.name )
+                        name = uploaded_file.name.replace('.json', '')
+                        loadjsonfile(name,uploaded_file.name)
+                        st.write("Le fichier est charge" +uploaded_file.name )
+                    
+                        
+                        st.write("Le fichier est un document JSON." + uploaded_file.name )
+                    elif ".csv" in uploaded_file.name:
+                        st.write("Le fichier est un document csv"+ uploaded_file.name )
+                        name = uploaded_file.name.replace('.csv', '')
+                        loadcsvfile(name,uploaded_file.name)
+                        st.write("Le fichier est charge" +uploaded_file.name )
+                    
+                    os.remove(absolute_file_path)
+                    st.write(f"Le fichier temporaire {absolute_file_path} a été supprimé.")
 
          
         with tab3:
