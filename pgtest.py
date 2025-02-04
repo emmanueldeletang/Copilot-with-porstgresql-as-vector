@@ -267,12 +267,13 @@ def authenticate(username):
     # Pour des raisons de démonstration, nous utilisons une vérification simple
     return username 
     
-def generatecompletionede(user_prompt ) -> str:
+def generatecompletionede(user_prompt ,username ) -> str:
     
  
     system_prompt = '''
     You are an intelligent assistant for yourdata , please answer in the same langage use by the user . You are designed to provide helpful answers to user questions about your data.
-    You are friendly, helpful, and informative and can be lighthearted. Be concise in your responses, but still friendly.
+    You are friendly, helpful, and informative and can be lighthearted. Be concise in your responses, but still friendly.use the name of the file where the information is stored to provide the answer.
+        - start with the hello ''' + username + '''
         - Only answer questions related to the information provided below. 
         - Write two lines of whitespace between each answer in the list.'''
         
@@ -361,7 +362,7 @@ def chat_completion(user_input,username ):
    
         
         # Generate the completion
-        completions_results = generatecompletionede(user_input)
+        completions_results = generatecompletionede(user_input, username)
 
         # Cache the response
         cacheresponse(user_input, completions_results,username)
@@ -419,9 +420,9 @@ def main():
         with tab2:
             st.header("Chargement de document ")
         
-            uploaded_file = st.file_uploader("Choisissez un fichier", type=["pdf", "docx","csv",  "json"])
+            uploaded_file = st.file_uploader("Choose your file to upload", type=["pdf", "docx","csv",  "json"])
             if uploaded_file is not None:
-                st.write("Fichier sélectionné:", uploaded_file.name)
+                st.write("File selected: ", uploaded_file.name)
         
             # Enregistrer temporairement le fichier téléchargé pour obtenir le chemin absolu
                 with open(uploaded_file.name, "wb") as f:
@@ -429,7 +430,7 @@ def main():
 
             # Obtenir le chemin absolu du fichier
                 absolute_file_path = os.path.abspath(uploaded_file.name)
-                st.write(f"Le chemin absolu du fichier est : {absolute_file_path}")
+                st.write(f"the file is  : {absolute_file_path}")
                 
                 
                 if st.button("load data "):
@@ -437,31 +438,28 @@ def main():
                     
                 
                     if ".doc" in uploaded_file.name:
-                        st.write("Le fichier est un document pdf"+ uploaded_file.name )
+                        st.write("this is a file type word "+ uploaded_file.name )
                         name = uploaded_file.name.replace('.doc', '')
                         loadwordfile(name,absolute_file_path )
                         st.write("Le fichier est charge" +uploaded_file.name )
-                    
-                        st.write("Le fichier est un document Word.")
+                  
                     elif ".pdf" in uploaded_file.name:
-                        st.write("Le fichier est un document pdf"+ uploaded_file.name )
+                        st.write("this is a file type pdf "+ uploaded_file.name )
                         name = uploaded_file.name.replace('.pdf', '')
                         loadpdffile(name,absolute_file_path )
-                        st.write("Le fichier est charge" +uploaded_file.name )
+                        st.write("file loaded " +uploaded_file.name )
                     
                     elif ".json" in uploaded_file.name:
-                        st.write("Le fichier est un document csv"+ uploaded_file.name )
+                        st.write("this is a file type JSON "+ uploaded_file.name )
                         name = uploaded_file.name.replace('.json', '')
                         loadjsonfile(name,uploaded_file.name)
-                        st.write("Le fichier est charge" +uploaded_file.name )
+                        st.write("file loaded " +uploaded_file.name )
                     
-                        
-                        st.write("Le fichier est un document JSON." + uploaded_file.name )
                     elif ".csv" in uploaded_file.name:
-                        st.write("Le fichier est un document csv"+ uploaded_file.name )
+                        st.write("this is a file type csv "+ uploaded_file.name )
                         name = uploaded_file.name.replace('.csv', '')
                         loadcsvfile(name,uploaded_file.name)
-                        st.write("Le fichier est charge" +uploaded_file.name )
+                        st.write("file loaded " +uploaded_file.name )
                     
                     os.remove(absolute_file_path)
                     st.write(f"Le fichier temporaire {absolute_file_path} a été supprimé.")
