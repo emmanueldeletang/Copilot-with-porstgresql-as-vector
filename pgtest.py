@@ -43,6 +43,7 @@ openai_key = config['openai_key']
 openai_version = config['openai_version']
 openai_chat_model = config['AZURE_OPENAI_CHAT_MODEL']
 openai_embeddings_model = config['openai_embeddings_deployment']
+embeddingssize = config['embeddingsize']
 
 openai_client = AzureOpenAI(
   api_key = openai_key,  
@@ -80,7 +81,7 @@ def intialize():
         )
 
 
-    cmd = """ALTER TABLE tablecahedoc  ADD COLUMN dvector vector(3072)  GENERATED ALWAYS AS ( azure_openai.create_embeddings('text-embedding-3-large', prompt)::vector) STORED; """
+    cmd = """ALTER TABLE tablecahedoc  ADD COLUMN dvector vector("""+str(embeddingssize)+""")  GENERATED ALWAYS AS ( azure_openai.create_embeddings('"""+ str(openai_embeddings_model)+"""', prompt)::vector) STORED; """
     cur.execute(cmd)
 
    # cm = """CREATE INDEX tablecahedoc_embedding_diskann_idx ON tablecahedoc USING diskann (dvector vector_cosine_ops)"""
@@ -94,7 +95,7 @@ def intialize():
                                  )
 
     
-    cmd = """ALTER TABLE data  ADD COLUMN dvector vector(3072)  GENERATED ALWAYS AS ( azure_openai.create_embeddings('text-embedding-3-large', chuncks)::vector) STORED; """
+    cmd = """ALTER TABLE data  ADD COLUMN dvector vector("""+str(embeddingssize)+""")  GENERATED ALWAYS AS ( azure_openai.create_embeddings('"""+ str(openai_embeddings_model)+"""', chuncks)::vector) STORED; """
     cur.execute(cmd)
 
    # cmd2 = """CREATE INDEX data_embedding_diskann_idx ON data USING diskann (dvector vector_cosine_ops)"""
@@ -313,7 +314,7 @@ def cachesearch(test,name):
     cur = conn.cursor()
    
     query = f"""SELECT e.completion
-    FROM tablecahedoc e  where e.usname = '""" + str(name) +"""' and e.dvector <=> azure_openai.create_embeddings('text-embedding-3-large', ' """ + str(test) + """')::vector < 0.07  ORDER BY  e.dvector <=> azure_openai.create_embeddings('text-embedding-3-large','""" + str(test) +"""')::vector  LIMIT 1;"""
+    FROM tablecahedoc e  where e.usname = '""" + str(name) +"""' and e.dvector <=> azure_openai.create_embeddings('"""+ str(openai_embeddings_model)+"""', ' """ + str(test) + """')::vector < 0.07  ORDER BY  e.dvector <=> azure_openai.create_embeddings('"""+ str(openai_embeddings_model)+"""','""" + str(test) +"""')::vector  LIMIT 1;"""
    
     cur.execute(query)
     resutls = cur.fetchall()
@@ -330,7 +331,7 @@ def  ask_dbvector(textuser):
     
     query = f"""SELECT
      e.chuncks , e.filename
-    FROM data e where e.dvector <=> azure_openai.create_embeddings('text-embedding-3-large', ' """ + str(textuser) + """')::vector < 0.25  ORDER BY  e.dvector <=> azure_openai.create_embeddings('text-embedding-3-large','""" + str(textuser) +"""')::vector  LIMIT 4;"""
+    FROM data e where e.dvector <=> azure_openai.create_embeddings('"""+ str(openai_embeddings_model)+"""', ' """ + str(textuser) + """')::vector < 0.25  ORDER BY  e.dvector <=> azure_openai.create_embeddings('"""+ str(openai_embeddings_model)+"""','""" + str(textuser) +"""')::vector  LIMIT 2;"""
     
     print(query)
     cur.execute(query)
