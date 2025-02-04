@@ -1,4 +1,4 @@
-dotenv
+python-dotenv
 tenacity==8.2.3
 matplotlib
 plotly
