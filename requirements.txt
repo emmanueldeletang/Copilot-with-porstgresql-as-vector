@@ -1,4 +1,4 @@
-python-dotenv
+dotenv
 tenacity==8.2.3
 matplotlib
 plotly
@@ -10,7 +10,6 @@ tiktoken
 langchain_openai
 azure-identity
 config 
-gradio
 langchain-core
 langchain_community 
 langchain_text_splitters
@@ -21,4 +20,5 @@ streamlit
 psycopg2-binary
 openai
 langchain_experimental
- langchain_openai 
+langchain_openai 
+streamlit
