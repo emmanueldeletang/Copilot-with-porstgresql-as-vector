@@ -1,6 +1,5 @@
 import os
 import psycopg2
-from flask import Flask, render_template, request, url_for, redirect
 from dotenv import dotenv_values
 from openai import AzureOpenAI
 import time
@@ -82,11 +81,11 @@ def intialize():
         )
 
 
-    cmd = """ALTER TABLE tablecahedoc  ADD COLUMN dvector vector(1536)  GENERATED ALWAYS AS ( azure_openai.create_embeddings('text-embedding-ada-002', prompt)::vector) STORED; """
+    cmd = """ALTER TABLE tablecahedoc  ADD COLUMN dvector vector(3072)  GENERATED ALWAYS AS ( azure_openai.create_embeddings('text-embedding-3-large', prompt)::vector) STORED; """
     cur.execute(cmd)
 
-    cm = """CREATE INDEX tablecahedoc_embedding_diskann_idx ON tablecahedoc USING diskann (dvector vector_cosine_ops)"""
-    cur.execute(cm)
+   # cm = """CREATE INDEX tablecahedoc_embedding_diskann_idx ON tablecahedoc USING diskann (dvector vector_cosine_ops)"""
+   # cur.execute(cm)
 
     cur.execute('CREATE TABLE data (id serial PRIMARY KEY,'
                                  'filename text NOT NULL,'
@@ -96,11 +95,11 @@ def intialize():
                                  )
 
     
-    cmd = """ALTER TABLE data  ADD COLUMN dvector vector(1536)  GENERATED ALWAYS AS ( azure_openai.create_embeddings('text-embedding-ada-002', chuncks)::vector) STORED; """
+    cmd = """ALTER TABLE data  ADD COLUMN dvector vector(3072)  GENERATED ALWAYS AS ( azure_openai.create_embeddings('text-embedding-3-large', chuncks)::vector) STORED; """
     cur.execute(cmd)
 
-    cmd2 = """CREATE INDEX data_embedding_diskann_idx ON data USING diskann (dvector vector_cosine_ops)"""
-    cur.execute(cmd2)
+   # cmd2 = """CREATE INDEX data_embedding_diskann_idx ON data USING diskann (dvector vector_cosine_ops)"""
+    #cur.execute(cmd2)
     # Commit the transaction
     conn.commit()
 
@@ -315,7 +314,7 @@ def cachesearch(test,name):
     cur = conn.cursor()
    
     query = f"""SELECT e.completion
-    FROM tablecahedoc e  where e.usname = '""" + str(name) +"""' and e.dvector <=> azure_openai.create_embeddings('text-embedding-ada-002', ' """ + str(test) + """')::vector < 0.07  ORDER BY  e.dvector <=> azure_openai.create_embeddings('text-embedding-ada-002','""" + str(test) +"""')::vector  LIMIT 1;"""
+    FROM tablecahedoc e  where e.usname = '""" + str(name) +"""' and e.dvector <=> azure_openai.create_embeddings('text-embedding-3-large', ' """ + str(test) + """')::vector < 0.07  ORDER BY  e.dvector <=> azure_openai.create_embeddings('text-embedding-3-large','""" + str(test) +"""')::vector  LIMIT 1;"""
    
     cur.execute(query)
     resutls = cur.fetchall()
@@ -332,7 +331,7 @@ def  ask_dbvector(textuser):
     
     query = f"""SELECT
      e.chuncks , e.filename
-    FROM data e where e.dvector <=> azure_openai.create_embeddings('text-embedding-ada-002', ' """ + str(textuser) + """')::vector < 0.25  ORDER BY  e.dvector <=> azure_openai.create_embeddings('text-embedding-ada-002','""" + str(textuser) +"""')::vector  LIMIT 1;"""
+    FROM data e where e.dvector <=> azure_openai.create_embeddings('text-embedding-3-large', ' """ + str(textuser) + """')::vector < 0.25  ORDER BY  e.dvector <=> azure_openai.create_embeddings('text-embedding-3-large','""" + str(textuser) +"""')::vector  LIMIT 4;"""
     
     print(query)
     cur.execute(query)
