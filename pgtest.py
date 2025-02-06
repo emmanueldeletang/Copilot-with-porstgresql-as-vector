@@ -36,35 +36,21 @@ from langchain_openai.embeddings import OpenAIEmbeddings
 env_name = "example.env" # following example.env template change to your own .env file name
 config = dotenv_values(env_name)
 
-# Connect to PostgreSQL
-
-openai_endpoint = config['openai_endpoint']
-openai_key = config['openai_key']
-openai_version = config['openai_version']
-openai_chat_model = config['AZURE_OPENAI_CHAT_MODEL']
-openai_embeddings_model = config['openai_embeddings_deployment']
-embeddingssize = config['embeddingsize']
-
-openai_client = AzureOpenAI(
-  api_key = openai_key,  
-  api_version = openai_version,  
-  azure_endpoint =openai_endpoint 
-)
 
 
-def clearcache():
+def clearcache(dbname,user,password,host,port):
     
-    conn = get_db_connection()
+    conn = get_db_connection(dbname,user,password,host,port)
     cur = conn.cursor()
     cur.execute('DELETE FROM tablecahedoc')
     conn.commit()
     cur.close()
     conn.close()
     
-def intialize():
+def intialize(dbname,user,password,host,port,embeddingssize,openai_embeddings_model):
     
 # Connect to PostgreSQL
-    conn = get_db_connection()
+    conn = get_db_connection(dbname,user,password,host,port)
     cur = conn.cursor()
 
     # Execute a command: this creates a new table
@@ -107,10 +93,10 @@ def intialize():
     cur.close()
     conn.close()
 
-def cleanall():
+def cleanall(dbname,user,password,host,port):
 
 # Connect to PostgreSQL
-    conn = get_db_connection()
+    conn = get_db_connection(dbname,user,password,host,port)
     cur = conn.cursor()
 
     # Execute a command: this creates a new table
@@ -122,7 +108,7 @@ def cleanall():
     cur.close()
     conn.close()
 
-def loadpdffile(name,file) :
+def loadpdffile(name,file,dbname,user,password,host,port) :
     
    
     loader = PyPDFLoader(file)
@@ -136,7 +122,7 @@ def loadpdffile(name,file) :
         for d in docs : 
             data = str(d)
             print(data)
-            conn = get_db_connection()
+            conn = get_db_connection(dbname,user,password,host,port)
             cur = conn.cursor()
             cur.execute('INSERT INTO data (filename, typefile,chuncks)'
                         'VALUES (%s, %s,%s)',
@@ -148,7 +134,7 @@ def loadpdffile(name,file) :
     except : 
      raise     
 
-def loadwordfile(name,file) :
+def loadwordfile(name,file,dbname,user,password,host,port) :
     
    
 
@@ -165,7 +151,7 @@ def loadwordfile(name,file) :
     try:
       for d in docs : 
             data = str(d)
-            conn = get_db_connection()
+            conn = get_db_connection(dbname,user,password,host,port)
             cur = conn.cursor()
             cur.execute('INSERT INTO data (filename, typefile,chuncks)'
                         'VALUES (%s, %s,%s)',
@@ -178,14 +164,14 @@ def loadwordfile(name,file) :
      raise    
  
  
-def loadjsonfile(name,file): 
+def loadjsonfile(name,file,dbname,user,password,host,port): 
     
     with open(file,encoding="utf8") as file:
         docu = json.load(file)
         for row in docu:
             data = json.dumps(row)
             print (data)
-            conn = get_db_connection()
+            conn = get_db_connection(dbname,user,password,host,port)
             cur = conn.cursor()
             cur.execute('INSERT INTO data (filename, typefile,chuncks)'
                 'VALUES (%s, %s,%s)',
@@ -196,13 +182,13 @@ def loadjsonfile(name,file):
             conn.close()
  
  
-def loadcsvfile(name,file) :
+def loadcsvfile(name,file,dbname,user,password,host,port) :
     
  with open(file, mode='r', encoding='utf-8-sig') as file:
   csv_reader = csv.DictReader(file)
   for row in csv_reader:
     data = json.dumps(row)
-    conn = get_db_connection()
+    conn = get_db_connection(dbname,user,password,host,port)
     cur = conn.cursor()
     cur.execute('INSERT INTO data (filename, typefile,chuncks)'
                 'VALUES (%s, %s,%s)',
@@ -212,19 +198,7 @@ def loadcsvfile(name,file) :
     cur.close()
     conn.close()
       
-def generate_embeddings(openai_client, text):
-    """
-    Generates embeddings for a given text using the OpenAI API v1.x
-    """
-    
-    response = openai_client.embeddings.create(
-        input = text,
-        model= openai_embeddings_model
-    
-    )
-    embeddings = response.data[0].embedding
-    return embeddings
- 
+
  
 def get_completion(openai_client, model, prompt: str):    
    
@@ -237,37 +211,22 @@ def get_completion(openai_client, model, prompt: str):
     
     return response.model_dump()
 
-def cacheresponse(user_prompt,  response , name):
-
-    
-        
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('INSERT INTO tablecahedoc (prompt, completion, completiontokens, promptTokens,totalTokens,usname, model)'
-                    'VALUES (%s, %s, %s, %s ,%s, %s,%)',
-                    (user_prompt, response['choices'][0]['message']['content'], response['usage']['completion_tokens'], response['usage']['prompt_tokens'],response['usage']['total_tokens'],name, response['model']))
-    
 
 
-    print("item inserted into cache.")
-    conn.commit()
-    cur.close()
-    conn.close()
-
-def get_db_connection():
+def get_db_connection(dbname,user,password,host,port):
     conn = psycopg2.connect(
-        dbname=config['pgdbname'],
-        user=config['pguser'],
-        password=config['pgpassword'],
-        host=config['pghost'],
-        port=config['pgport'])
+        dbname=dbname,
+        user=user,
+        password=password,
+        host=host,
+        port=port)
     return conn
 
 def authenticate(username):
     # Pour des raisons de démonstration, nous utilisons une vérification simple
     return username 
     
-def generatecompletionede(user_prompt ,username ) -> str:
+def generatecompletionede(openai_client,user_prompt ,username,dbname,user,password,host,port,openai_embeddings_model, openai_chat_model) -> str:
     
  
     system_prompt = '''
@@ -283,7 +242,7 @@ def generatecompletionede(user_prompt ,username ) -> str:
     #user prompt
     messages.append({'role': 'user', 'content': user_prompt})
     
-    vector_search_results =  ask_dbvector(user_prompt )
+    vector_search_results =  ask_dbvector(user_prompt,dbname,user,password,host,port,openai_embeddings_model )
     
     for result in vector_search_results:
      
@@ -293,11 +252,11 @@ def generatecompletionede(user_prompt ,username ) -> str:
 
     return response
 
-def cacheresponse(user_prompt,  response , name):
+def cacheresponse(user_prompt,  response , name,dbname,user,password,host,port):
 
     
         
-    conn = get_db_connection()
+    conn = get_db_connection(dbname,user,password,host,port)
     cur = conn.cursor()
     cur.execute('INSERT INTO tablecahedoc (prompt, completion, completiontokens, promptTokens,totalTokens, model,usname)'
                     'VALUES (%s, %s, %s, %s ,%s, %s,%s)',
@@ -310,8 +269,8 @@ def cacheresponse(user_prompt,  response , name):
     cur.close()
     conn.close()
 
-def cachesearch(test,name):
-    conn = get_db_connection()
+def cachesearch(test,name,dbname,user,password,host,port,openai_embeddings_model):
+    conn = get_db_connection(dbname,user,password,host,port)
     cur = conn.cursor()
    
     query = f"""SELECT e.completion
@@ -324,9 +283,9 @@ def cachesearch(test,name):
   
     return resutls
     
-def  ask_dbvector(textuser):
+def  ask_dbvector(textuser,dbname,user,password,host,port,openai_embeddings_model):
     
-    conn = get_db_connection()
+    conn = get_db_connection(dbname,user,password,host,port)
     cur = conn.cursor()
   
     
@@ -346,26 +305,23 @@ def  ask_dbvector(textuser):
     return res
 
 
-
-def chat_completion(user_input,username ):
+def chat_completion(openai_client,user_input,username ,dbname,user,password,host,port,openai_embeddings_model, openai_chat_model):
 
 
     # Query the chat history cache first to see if this question has been asked before
-    cache_results = cachesearch(user_input ,username)
+    cache_results = cachesearch(user_input ,username,dbname,user,password,host,port,openai_embeddings_model)
 
     if len(cache_results) > 0:
        
         return cache_results[0], True
     else:
-        # Perform vector search on the movie collection
-       
+      
    
-        
         # Generate the completion
-        completions_results = generatecompletionede(user_input, username)
+        completions_results = generatecompletionede(openai_client,user_input, username,dbname,user,password,host,port,openai_embeddings_model, openai_chat_model)
 
         # Cache the response
-        cacheresponse(user_input, completions_results,username)
+        cacheresponse(user_input, completions_results,username,dbname,user,password,host,port)
 
         
         
@@ -375,16 +331,74 @@ def chat_completion(user_input,username ):
 # Application Streamlit
 def main():
     st.title("Connection page with Postgreqsl sample ")
-   
+    # Onglets
+    
+    
+    dbname=config['pgdbname'],
+    user=config['pguser'],
+    password=config['pgpassword'],
+    host=config['pghost'],
+    port=config['pgport']
+    st.sidebar.title("Chatbot")
+    dbname =  ''.join(filter(str.isalnum, dbname))
+
+    dbname = st.sidebar.text_input("dbname",value=dbname)
+    user = ''.join(filter(str.isalnum, user))
+    user = st.sidebar.text_input("pguser",value=user)
+    password = ''.join(filter(str.isalnum, password))
+    password = st.sidebar.text_input("pgpassword",value=password)
+    host = str(host)
+    host = host.replace("'","")
+    host = host.replace("(","")
+    host = host.replace(")","")
+    host = host.replace(",","") 
+    host = st.sidebar.text_input("pghost",value=host)
+    port = ''.join(filter(str.isalnum, port))
+    port = st.sidebar.text_input("pgport",value=port)
+    openai_endpoint = config['openai_endpoint']
+    openai_key = config['openai_key']
+    openai_version = config['openai_version']
+    openai_chat_model = config['AZURE_OPENAI_CHAT_MODEL']
+    embeddingssize = config['embeddingsize']
+    
+    models = [
+        "text-embedding-3-large",
+        "text-embedding-ada-2",
+            ]
+
+    openai_embeddings_model = st.sidebar.selectbox(
+        ' Chat embedding',
+          (models))
+    
+    openai_endpoint = st.sidebar.text_input("openai_endpoint",value=openai_endpoint)
+    openai_key = st.sidebar.text_input("openai_key",value=openai_key)
+    openai_version = st.sidebar.text_input("openai_version",value=openai_version)   
+    openai_chat_model = st.sidebar.text_input("openai_chat_model",value=openai_chat_model)
+    embeddingssize = st.sidebar.text_input("embeddingssize",value=embeddingssize)
+    
     global chat_history
     chat_history = []
+    
+    openai_client = AzureOpenAI(
+     api_key = openai_key,  
+     api_version = openai_version,  
+     azure_endpoint =openai_endpoint 
+    )
+    
+    
   
     # Initialize session state for login
     if 'logged_in' not in st.session_state:
         st.session_state.logged_in = False
 
+
+
+
+
     if st.session_state.logged_in:
        
+       
+        
         username = st.session_state.username
         display = "Welcome to the applicaton: " + username 
         st.success(display)
@@ -399,19 +413,19 @@ def main():
             
             if st.button("create the table for data and cache "):
                 st.write("start the operation")
-                intialize()
+                intialize(dbname,user,password,host,port,embeddingssize,openai_embeddings_model)
                 st.write("the database and collection vector and cache are created ")
                 
             
             if st.button("clear the cache table "):
                 st.write("start clear the Cache")
-                clearcache()
+                clearcache(dbname,user,password,host,port)
                 st.write("Cache cleared.")
                 
            
             if st.button("delete all table to reinit"):
                 st.write("delete all collection")
-                cleanall()    
+                cleanall(dbname,user,password,host,port)    
                 st.write("all collection delete ")
             
           
@@ -440,38 +454,34 @@ def main():
                     if ".doc" in uploaded_file.name:
                         st.write("this is a file type word "+ uploaded_file.name )
                         name = uploaded_file.name.replace('.doc', '')
-                        loadwordfile(name,absolute_file_path )
-                        st.write("Le fichier est charge" +uploaded_file.name )
+                        loadwordfile(name,absolute_file_path, dbname,user,password,host,port)
+                        st.write("file load" +uploaded_file.name )
                   
                     elif ".pdf" in uploaded_file.name:
                         st.write("this is a file type pdf "+ uploaded_file.name )
                         name = uploaded_file.name.replace('.pdf', '')
-                        loadpdffile(name,absolute_file_path )
+                        loadpdffile(name,absolute_file_path ,dbname,user,password,host,port)
                         st.write("file loaded " +uploaded_file.name )
                     
                     elif ".json" in uploaded_file.name:
                         st.write("this is a file type JSON "+ uploaded_file.name )
                         name = uploaded_file.name.replace('.json', '')
-                        loadjsonfile(name,uploaded_file.name)
+                        loadjsonfile(name,uploaded_file.name,dbname,user,password,host,port)
                         st.write("file loaded " +uploaded_file.name )
                     
                     elif ".csv" in uploaded_file.name:
                         st.write("this is a file type csv "+ uploaded_file.name )
                         name = uploaded_file.name.replace('.csv', '')
-                        loadcsvfile(name,uploaded_file.name)
+                        loadcsvfile(name,uploaded_file.name,dbname,user,password,host,port)
                         st.write("file loaded " +uploaded_file.name )
                     
                     os.remove(absolute_file_path)
-                    st.write(f"Le fichier temporaire {absolute_file_path} a été supprimé.")
+                    st.write(f"temp file  {absolute_file_path} was deleted .")
 
          
         with tab3:
             st.header("Chat")
-            reset_button_key = "reset_button"
-            reset_button = st.button("Reset Chat",key=reset_button_key)
-            if reset_button:
-                st.session_state.conversation = None
-                st.session_state.chat_history = None
+       
                 
             st.write("Chatbot goes here")
             if "messages" not in st.session_state:
@@ -488,7 +498,7 @@ def main():
                 with st.chat_message("assistant"):
                     question = prompt.replace("""'""", '')
                     start_time = time.time()
-                    response_payload, cached = chat_completion(question,username)
+                    response_payload, cached = chat_completion(openai_client,question,username,dbname,user,password,host,port,openai_embeddings_model, openai_chat_model)
                     end_time = time.time()
                     elapsed_time = round((end_time - start_time) * 1000, 2)
                     response = response_payload
