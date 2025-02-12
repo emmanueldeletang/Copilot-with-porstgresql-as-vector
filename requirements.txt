@@ -1,9 +1,5 @@
 python-dotenv
 tenacity==8.2.3
-matplotlib
-plotly
-scikit-learn
-dnspython
 openai
 langchain
 tiktoken
@@ -22,3 +18,8 @@ openai
 langchain_experimental
 langchain_openai 
 streamlit
+unstructured
+python-magic
+python-pptx
+openpyxl
+networkx

@@ -29,9 +29,11 @@ from openai import AzureOpenAI
 from dotenv import dotenv_values
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.document_loaders import UnstructuredWordDocumentLoader
+from langchain_community.document_loaders import UnstructuredPowerPointLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from tempfile import NamedTemporaryFile
 from langchain_openai.embeddings import OpenAIEmbeddings
+from langchain_community.document_loaders import UnstructuredExcelLoader
 
 env_name = "example.env" # following example.env template change to your own .env file name
 config = dotenv_values(env_name)
@@ -108,6 +110,74 @@ def cleanall(dbname,user,password,host,port):
     cur.close()
     conn.close()
 
+
+
+def loadpptfile(name,file,dbname,user,password,host,port) :
+    
+    loader = UnstructuredPowerPointLoader(file)
+    data = loader.load()
+    
+    print(data)
+    
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
+    docs = text_splitter.split_documents(data)
+    
+   
+   
+    try:
+        for d in docs : 
+            data = str(d)
+            print(data)
+            conn = get_db_connection(dbname,user,password,host,port)
+            cur = conn.cursor()
+            cur.execute('INSERT INTO data (filename, typefile,chuncks)'
+                        'VALUES (%s, %s,%s)',
+                        (name,"ppt",data)
+                        )
+            conn.commit()
+            cur.close()
+            conn.close()
+    except : 
+     raise 
+
+
+
+
+def loadxlsfile(name,file,dbname,user,password,host,port) :
+    
+    
+    loader = UnstructuredExcelLoader(file, mode="elements")
+    data = loader.load()
+
+    print(len(data))
+
+    
+    #text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
+    #docs = text_splitter.split_documents(data)
+    
+      
+    try:
+        for d in data : 
+            dat = str(d)
+            print(dat)
+            conn = get_db_connection(dbname,user,password,host,port)
+            cur = conn.cursor()
+            cur.execute('INSERT INTO data (filename, typefile,chuncks)'
+                        'VALUES (%s, %s,%s)',
+                        (name,"xls",dat)
+                        )
+            conn.commit()
+            cur.close()
+            conn.close()
+    except : 
+     raise 
+
+
+
+
+
+
+
 def loadpdffile(name,file,dbname,user,password,host,port) :
     
    
@@ -163,7 +233,6 @@ def loadwordfile(name,file,dbname,user,password,host,port) :
     except : 
      raise    
  
- 
 def loadjsonfile(name,file,dbname,user,password,host,port): 
     
     with open(file,encoding="utf8") as file:
@@ -181,7 +250,6 @@ def loadjsonfile(name,file,dbname,user,password,host,port):
             cur.close()
             conn.close()
  
- 
 def loadcsvfile(name,file,dbname,user,password,host,port) :
     
  with open(file, mode='r', encoding='utf-8-sig') as file:
@@ -198,7 +266,6 @@ def loadcsvfile(name,file,dbname,user,password,host,port) :
     cur.close()
     conn.close()
       
-
  
 def get_completion(openai_client, model, prompt: str):    
    
@@ -210,8 +277,6 @@ def get_completion(openai_client, model, prompt: str):
     )   
     
     return response.model_dump()
-
-
 
 def get_db_connection(dbname,user,password,host,port):
     conn = psycopg2.connect(
@@ -434,7 +499,7 @@ def main():
         with tab2:
             st.header("Chargement de document ")
         
-            uploaded_file = st.file_uploader("Choose your file to upload", type=["pdf", "docx","csv",  "json"])
+            uploaded_file = st.file_uploader("Choose your file to upload", type=["pdf", "docx","csv", "ppt","xls","xlsx" ,"pptx", "json"])
             if uploaded_file is not None:
                 st.write("File selected: ", uploaded_file.name)
         
@@ -450,12 +515,24 @@ def main():
                 if st.button("load data "):
                     st.write("start the operation")
                     
-                
-                    if ".doc" in uploaded_file.name:
+                    if ".ppt" in uploaded_file.name:
+                        st.write("this is a file type ppt "+ uploaded_file.name )
+                        name = uploaded_file.name.replace('.ppt', '')
+                        loadpptfile(name,absolute_file_path, dbname,user,password,host,port)
+                        st.write("file load" +uploaded_file.name )
+                    
+                    elif ".doc" in uploaded_file.name:
                         st.write("this is a file type word "+ uploaded_file.name )
                         name = uploaded_file.name.replace('.doc', '')
                         loadwordfile(name,absolute_file_path, dbname,user,password,host,port)
                         st.write("file load" +uploaded_file.name )
+                        
+                        
+                    elif ".xls" in uploaded_file.name:
+                        st.write("this is a file type excel "+ uploaded_file.name )
+                        name = uploaded_file.name.replace('.xls', '')
+                        loadxlsfile(name,absolute_file_path, dbname,user,password,host,port)
+                        st.write("file load" +uploaded_file.name )    
                   
                     elif ".pdf" in uploaded_file.name:
                         st.write("this is a file type pdf "+ uploaded_file.name )
