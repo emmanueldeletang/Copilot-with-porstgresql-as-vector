@@ -1,5 +1,5 @@
 # Copilot-with-porstgresql-as-vector
-a full web application where you can load file( csv , json , word , pdf ) and make llm and vector search with sample code to bulid your copilot and load your data inside and put question and answer in cache to save time
+a full web application where you can load file( csv , json , word ,powerpoint , Excel ,  pdf ) and make llm and vector search with sample code to bulid your copilot and load your data inside and put question and answer in cache to save time
 
 
 ## Features
