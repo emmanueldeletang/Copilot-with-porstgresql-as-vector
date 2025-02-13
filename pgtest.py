@@ -23,8 +23,6 @@ from tenacity import retry, wait_random_exponential, stop_after_attempt
 from dotenv import dotenv_values
 from openai import AzureOpenAI
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_community.document_loaders import UnstructuredWordDocumentLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import AzureOpenAI
 from dotenv import dotenv_values
 from langchain_community.document_loaders import PyPDFLoader
@@ -35,7 +33,7 @@ from tempfile import NamedTemporaryFile
 from langchain_openai.embeddings import OpenAIEmbeddings
 from langchain_community.document_loaders import UnstructuredExcelLoader
 from azure.cosmos import CosmosClient, PartitionKey
-
+import pandas as pd
 
 env_name = "example.env" # following example.env template change to your own .env file name
 config = dotenv_values(env_name)
@@ -91,6 +89,9 @@ def intialize(dbname,user,password,host,port,embeddingssize,openai_embeddings_mo
 
     cmd2 = """CREATE INDEX data_embedding_diskann_idx ON data USING diskann (dvector vector_cosine_ops)"""
     cur.execute(cmd2)
+    
+    cmd3 = """CREATE INDEX data_idx ON data USING GIN (to_tsvector('english', chuncks));"""
+    cur.execute(cmd3)
     
     
     cmd3 = """CREATE TABLE IF NOT EXISTS public.userapp(id serial PRIMARY KEY,username text ,email text NOT NULL , country text, date_added date DEFAULT CURRENT_TIMESTAMP);"""    
@@ -159,8 +160,8 @@ def loadxlsfile(name,file,dbname,user,password,host,port) :
 
 
     
-    #text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
-    #docs = text_splitter.split_documents(data)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
+    docs = text_splitter.split_documents(data)
     
       
     try:
@@ -181,6 +182,37 @@ def loadxlsfile(name,file,dbname,user,password,host,port) :
 
 
 
+def loadfile(name,file,dbname,user,password,host,port) :
+    
+   
+    endpoint = config['dociendpoint']
+    key = config['docikey']
+    loader = AzureAIDocumentIntelligenceLoader(
+    api_endpoint=endpoint, api_key=key, file_path=file, api_model="prebuilt-layout"
+    )
+
+    documents = loader.load()
+    
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
+    docs = text_splitter.split_documents(documents)
+    
+    
+    try:
+        for d in docs : 
+            data = str(d)
+            print (data)
+           
+            conn = get_db_connection(dbname,user,password,host,port)
+            cur = conn.cursor()
+            cur.execute('INSERT INTO data (filename, typefile,chuncks)'
+                        'VALUES (%s, %s,%s)',
+                        (name,name,data)
+                        )
+            conn.commit()
+            cur.close()
+            conn.close()
+    except : 
+     raise     
 
 
 
@@ -337,7 +369,7 @@ def authenticate(username):
     # Pour des raisons de démonstration, nous utilisons une vérification simple
     return username 
     
-def generatecompletionede(openai_client,user_prompt ,username,dbname,user,password,host,port,openai_embeddings_model, openai_chat_model) -> str:
+def generatecompletionede(openai_client,user_prompt ,username,dbname,user,password,host,port,openai_embeddings_model, openai_chat_model,typesearch) -> str:
     
  
     system_prompt = '''
@@ -352,7 +384,7 @@ def generatecompletionede(openai_client,user_prompt ,username,dbname,user,passwo
     #user prompt
     messages.append({'role': 'user', 'content': user_prompt})
     
-    vector_search_results =  ask_dbvector(user_prompt,dbname,user,password,host,port,openai_embeddings_model )
+    vector_search_results =  ask_dbvector(user_prompt,dbname,user,password,host,port,openai_embeddings_model,typesearch )
     
     for result in vector_search_results:
      
@@ -393,29 +425,66 @@ def cachesearch(test,name,dbname,user,password,host,port,openai_embeddings_model
   
     return resutls
     
-def  ask_dbvector(textuser,dbname,user,password,host,port,openai_embeddings_model):
+def  ask_dbvector(textuser,dbname,user,password,host,port,openai_embeddings_model,typesearch):
     
     conn = get_db_connection(dbname,user,password,host,port)
     cur = conn.cursor()
   
+    if  typesearch == "vector":
     
-    query = f"""SELECT
-     e.chuncks , e.filename
-    FROM data e where e.dvector <=> azure_openai.create_embeddings('"""+ str(openai_embeddings_model)+"""', ' """ + str(textuser) + """')::vector < 0.25  ORDER BY  e.dvector <=> azure_openai.create_embeddings('"""+ str(openai_embeddings_model)+"""','""" + str(textuser) +"""')::vector  LIMIT 1;"""
-    
- 
-    cur.execute(query)
-    resutls = str(cur.fetchall())
-
-                       
-    chars = re.escape(string.punctuation)
-    res = re.sub('['+chars+']', '',resutls)                        
-                         
-  
+        query = f"""SELECT
+        e.chuncks , e.filename
+        FROM data e where e.dvector <=> azure_openai.create_embeddings('"""+ str(openai_embeddings_model)+"""', ' """ + str(textuser) + """')::vector < 0.25  ORDER BY  e.dvector <=> azure_openai.create_embeddings('"""+ str(openai_embeddings_model)+"""','""" + str(textuser) +"""')::vector  LIMIT 1;"""
+        cur.execute(query)
+        resutls = str(cur.fetchall())               
+        chars = re.escape(string.punctuation)
+        res = re.sub('['+chars+']', '',resutls)                        
+        
+    elif  typesearch == "full text":
+        
+        
+        textuser = textuser.replace(" ","&")
+        print(textuser)
+        
+        query = f"""
+        SELECT chuncks , filename 
+        FROM data 
+        WHERE to_tsvector('english',chuncks ) @@ to_tsquery('"""+ textuser +"""')
+        ORDER BY ts_rank_cd(to_tsvector('english', chuncks), to_tsquery('"""+ textuser +"""')) DESC
+        LIMIT 2
+        """
+        cur.execute(query)
+        resutls = str(cur.fetchall())               
+        chars = re.escape(string.punctuation)
+        res = re.sub('['+chars+']', '',resutls)   
+        print("fulltext_query")
+        print(res)
+        
+        
+        
+    elif  typesearch == "hybrid": 
+        
+        textuser2 = textuser.replace(" ","&")  
+        hybrid_query = f"""SELECT
+        e.chuncks , e.filename
+        FROM data e where (e.dvector <=> azure_openai.create_embeddings('"""+ str(openai_embeddings_model)+"""', ' """ + str(textuser) + """')::vector < 0.25) or (to_tsvector('english',chuncks ) @@ to_tsquery('"""+ textuser2 +"""'))
+        ORDER BY  e.dvector <=> azure_openai.create_embeddings('"""+ str(openai_embeddings_model)+"""','""" + str(textuser) +"""')::vector  LIMIT 1;
+        """
+               
+        cur.execute(hybrid_query)
+        resutls = str(cur.fetchall())               
+        chars = re.escape(string.punctuation)
+        res = re.sub('['+chars+']', '',resutls)   
+        print("hybrid_query")
+        print(res)
+        
+        
+        
+        
     return res
 
 
-def chat_completion(openai_client,user_input,username ,dbname,user,password,host,port,openai_embeddings_model, openai_chat_model):
+def chat_completion(openai_client,user_input,username ,dbname,user,password,host,port,openai_embeddings_model, openai_chat_model,typesearch):
 
 
     # Query the chat history cache first to see if this question has been asked before
@@ -428,7 +497,7 @@ def chat_completion(openai_client,user_input,username ,dbname,user,password,host
       
    
         # Generate the completion
-        completions_results = generatecompletionede(openai_client,user_input, username,dbname,user,password,host,port,openai_embeddings_model, openai_chat_model)
+        completions_results = generatecompletionede(openai_client,user_input, username,dbname,user,password,host,port,openai_embeddings_model, openai_chat_model,typesearch)
 
         # Cache the response
         cacheresponse(user_input, completions_results,username,dbname,user,password,host,port)
@@ -594,6 +663,7 @@ def main():
                     elif ".pdf" in uploaded_file.name:
                         st.write("this is a file type pdf "+ uploaded_file.name )
                         name = uploaded_file.name.replace('.pdf', '')
+                        #loadfile(name,absolute_file_path ,dbname,user,password,host,port)
                         loadpdffile(name,absolute_file_path ,dbname,user,password,host,port)
                         st.write("file loaded " +uploaded_file.name )
                     
@@ -615,6 +685,15 @@ def main():
          
         with tab3:
             st.header("Chat")
+                        
+            models = [
+                "vector",
+                "full text","hybrid"
+                ]
+
+            typesearch = st.selectbox(
+                'type search',
+                    (models))
             
             if st.button("clear the cache  "):
                 st.write("start clear the Cache")
@@ -636,7 +715,7 @@ def main():
                 with st.chat_message("assistant"):
                     question = prompt.replace("""'""", '')
                     start_time = time.time()
-                    response_payload, cached = chat_completion(openai_client,question,username,dbname,user,password,host,port,openai_embeddings_model, openai_chat_model)
+                    response_payload, cached = chat_completion(openai_client,question,username,dbname,user,password,host,port,openai_embeddings_model, openai_chat_model, typesearch)
                     end_time = time.time()
                     elapsed_time = round((end_time - start_time) * 1000, 2)
                     response = response_payload
@@ -658,13 +737,20 @@ def main():
             if st.button("show file loads  "):
                 
                   
-                st.write(f"LIST OF FILE LOAD ")         
+                st.write(f"LIST OF FILE LOAD ")  
+                
+          
+
+
                 conn = get_db_connection(dbname,user,password,host,port)
                 cur = conn.cursor()
-                query = f"""SELECT DISTINCT filename FROM data;"""
+                query = f"""SELECT DISTINCT filename as filename FROM data;"""
                 cur.execute(query)
-                resutls = str(cur.fetchall())
-                st.write(resutls) 
+                results = cur.fetchall()
+                
+                df = pd.DataFrame(results, columns=['filename'])
+
+                st.dataframe(df)
                 
                 
           

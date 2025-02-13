@@ -24,3 +24,5 @@ python-pptx
 openpyxl
 networkx
 azure-cosmos
+azure-ai-documentintelligence
+sqlalchemy
