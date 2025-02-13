@@ -23,3 +23,4 @@ python-magic
 python-pptx
 openpyxl
 networkx
+azure-cosmos
