@@ -34,6 +34,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from tempfile import NamedTemporaryFile
 from langchain_openai.embeddings import OpenAIEmbeddings
 from langchain_community.document_loaders import UnstructuredExcelLoader
+from azure.cosmos import CosmosClient, PartitionKey
+
 
 env_name = "example.env" # following example.env template change to your own .env file name
 config = dotenv_values(env_name)
@@ -72,8 +74,8 @@ def intialize(dbname,user,password,host,port,embeddingssize,openai_embeddings_mo
     cmd = """ALTER TABLE tablecahedoc  ADD COLUMN dvector vector("""+str(embeddingssize)+""")  GENERATED ALWAYS AS ( azure_openai.create_embeddings('"""+ str(openai_embeddings_model)+"""', prompt)::vector) STORED; """
     cur.execute(cmd)
 
-   # cm = """CREATE INDEX tablecahedoc_embedding_diskann_idx ON tablecahedoc USING diskann (dvector vector_cosine_ops)"""
-   # cur.execute(cm)
+    cm = """CREATE INDEX tablecahedoc_embedding_diskann_idx ON tablecahedoc USING diskann (dvector vector_cosine_ops)"""
+    cur.execute(cm)
 
     cur.execute('CREATE TABLE data (id serial PRIMARY KEY,'
                                  'filename text NOT NULL,'
@@ -81,13 +83,18 @@ def intialize(dbname,user,password,host,port,embeddingssize,openai_embeddings_mo
                                  'chuncks text,'
                                  'date_added date DEFAULT CURRENT_TIMESTAMP);'
                                  )
+    
 
     
     cmd = """ALTER TABLE data  ADD COLUMN dvector vector("""+str(embeddingssize)+""")  GENERATED ALWAYS AS ( azure_openai.create_embeddings('"""+ str(openai_embeddings_model)+"""', chuncks)::vector) STORED; """
     cur.execute(cmd)
 
-   # cmd2 = """CREATE INDEX data_embedding_diskann_idx ON data USING diskann (dvector vector_cosine_ops)"""
-    #cur.execute(cmd2)
+    cmd2 = """CREATE INDEX data_embedding_diskann_idx ON data USING diskann (dvector vector_cosine_ops)"""
+    cur.execute(cmd2)
+    
+    
+    cmd3 = """CREATE TABLE IF NOT EXISTS public.userapp(id serial PRIMARY KEY,username text ,email text NOT NULL , country text, date_added date DEFAULT CURRENT_TIMESTAMP);"""    
+    cur.execute(cmd3)
     # Commit the transaction
     conn.commit()
 
@@ -117,7 +124,7 @@ def loadpptfile(name,file,dbname,user,password,host,port) :
     loader = UnstructuredPowerPointLoader(file)
     data = loader.load()
     
-    print(data)
+
     
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
     docs = text_splitter.split_documents(data)
@@ -127,7 +134,7 @@ def loadpptfile(name,file,dbname,user,password,host,port) :
     try:
         for d in docs : 
             data = str(d)
-            print(data)
+         
             conn = get_db_connection(dbname,user,password,host,port)
             cur = conn.cursor()
             cur.execute('INSERT INTO data (filename, typefile,chuncks)'
@@ -149,7 +156,7 @@ def loadxlsfile(name,file,dbname,user,password,host,port) :
     loader = UnstructuredExcelLoader(file, mode="elements")
     data = loader.load()
 
-    print(len(data))
+
 
     
     #text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
@@ -159,7 +166,7 @@ def loadxlsfile(name,file,dbname,user,password,host,port) :
     try:
         for d in data : 
             dat = str(d)
-            print(dat)
+         
             conn = get_db_connection(dbname,user,password,host,port)
             cur = conn.cursor()
             cur.execute('INSERT INTO data (filename, typefile,chuncks)'
@@ -191,7 +198,7 @@ def loadpdffile(name,file,dbname,user,password,host,port) :
     try:
         for d in docs : 
             data = str(d)
-            print(data)
+           
             conn = get_db_connection(dbname,user,password,host,port)
             cur = conn.cursor()
             cur.execute('INSERT INTO data (filename, typefile,chuncks)'
@@ -239,7 +246,6 @@ def loadjsonfile(name,file,dbname,user,password,host,port):
         docu = json.load(file)
         for row in docu:
             data = json.dumps(row)
-            print (data)
             conn = get_db_connection(dbname,user,password,host,port)
             cur = conn.cursor()
             cur.execute('INSERT INTO data (filename, typefile,chuncks)'
@@ -265,14 +271,54 @@ def loadcsvfile(name,file,dbname,user,password,host,port) :
     conn.commit()
     cur.close()
     conn.close()
-      
+  
+
+
+
+def loaddataargus( argusdb,arguscollection , argusurl,arguskey, dbname,user,password,host,port) :
+    
+    clientargus = CosmosClient(argusurl, {'masterKey': arguskey})
+    mydbtsource = clientargus.get_database_client(argusdb)   
+     
+
+    
+    try:
+        i = 0
+        query = "SELECT c.id,c.extracted_data.gpt_summary_output FROM c WHERE c.extracted_data.gpt_summary_output != ''"
+        source = mydbtsource.get_container_client(arguscollection)
+        result = list( source.query_items(
+            query=query,
+            enable_cross_partition_query=True))
+
+        for item in result:
+            summary_output = item.get("gpt_summary_output")
+            file = item.get("id")
+            i = i+1
+     
+                     
+            conn = get_db_connection(dbname,user,password,host,port)
+            cur = conn.cursor()
+            cur.execute('INSERT INTO data (filename, typefile,chuncks)'
+                'VALUES (%s, %s,%s)',
+                (file,"argus",summary_output)
+               )
+       
+            conn.commit()
+            cur.close()
+            conn.close()
+
+       
+    except : 
+        raise  
+    return i 
+    
  
 def get_completion(openai_client, model, prompt: str):    
    
     response = openai_client.chat.completions.create(
         model = model,
         messages =   prompt,
-        temperature = 0.25
+        temperature = 0.15
         
     )   
     
@@ -295,11 +341,10 @@ def generatecompletionede(openai_client,user_prompt ,username,dbname,user,passwo
     
  
     system_prompt = '''
-    You are an intelligent assistant for yourdata , please answer in the same langage use by the user . You are designed to provide helpful answers to user questions about your data.
-    You are friendly, helpful, and informative and can be lighthearted. Be concise in your responses, but still friendly.use the name of the file where the information is stored to provide the answer.
-        - start with the hello ''' + username + '''
-        - Only answer questions related to the information provided below. 
-        - Write two lines of whitespace between each answer in the list.'''
+    You are an intelligent assistant for your data,please answer in the same langage use by the user. You are designed to provide helpful answers to user questions.
+    You are friendly, helpful, and informative and can be lighthearted. Be concise in your responses, 
+    - start with the hello ''' + username + '''
+    - Only answer questions related to the information provided below. '''
         
     # system prompt
 
@@ -329,7 +374,7 @@ def cacheresponse(user_prompt,  response , name,dbname,user,password,host,port):
     
 
 
-    print("item inserted into cache.")
+  
     conn.commit()
     cur.close()
     conn.close()
@@ -356,9 +401,9 @@ def  ask_dbvector(textuser,dbname,user,password,host,port,openai_embeddings_mode
     
     query = f"""SELECT
      e.chuncks , e.filename
-    FROM data e where e.dvector <=> azure_openai.create_embeddings('"""+ str(openai_embeddings_model)+"""', ' """ + str(textuser) + """')::vector < 0.25  ORDER BY  e.dvector <=> azure_openai.create_embeddings('"""+ str(openai_embeddings_model)+"""','""" + str(textuser) +"""')::vector  LIMIT 2;"""
+    FROM data e where e.dvector <=> azure_openai.create_embeddings('"""+ str(openai_embeddings_model)+"""', ' """ + str(textuser) + """')::vector < 0.25  ORDER BY  e.dvector <=> azure_openai.create_embeddings('"""+ str(openai_embeddings_model)+"""','""" + str(textuser) +"""')::vector  LIMIT 1;"""
     
-    print(query)
+ 
     cur.execute(query)
     resutls = str(cur.fetchall())
 
@@ -397,7 +442,16 @@ def chat_completion(openai_client,user_input,username ,dbname,user,password,host
 def main():
     st.title("Connection page with Postgreqsl sample ")
     # Onglets
-    
+    st.markdown(
+    """
+        <style>
+            [title="Show password text"] {
+            display: none;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+    )
     
     dbname=config['pgdbname'],
     user=config['pguser'],
@@ -409,9 +463,9 @@ def main():
 
     dbname = st.sidebar.text_input("dbname",value=dbname)
     user = ''.join(filter(str.isalnum, user))
-    user = st.sidebar.text_input("pguser",value=user)
+    user = st.sidebar.text_input("pguser",value=user,type="password")
     password = ''.join(filter(str.isalnum, password))
-    password = st.sidebar.text_input("pgpassword",value=password)
+    password = st.sidebar.text_input("pgpassword",value=password,type="password")
     host = str(host)
     host = host.replace("'","")
     host = host.replace("(","")
@@ -427,16 +481,16 @@ def main():
     embeddingssize = config['embeddingsize']
     
     models = [
+        "text-embedding-ada-002",
         "text-embedding-3-large",
-        "text-embedding-ada-2",
             ]
 
     openai_embeddings_model = st.sidebar.selectbox(
         ' Chat embedding',
           (models))
     
-    openai_endpoint = st.sidebar.text_input("openai_endpoint",value=openai_endpoint)
-    openai_key = st.sidebar.text_input("openai_key",value=openai_key)
+    openai_endpoint = st.sidebar.text_input("openai_endpoint",value=openai_endpoint,type="password")
+    openai_key = st.sidebar.text_input("openai_key",value=openai_key,type="password")
     openai_version = st.sidebar.text_input("openai_version",value=openai_version)   
     openai_chat_model = st.sidebar.text_input("openai_chat_model",value=openai_chat_model)
     embeddingssize = st.sidebar.text_input("embeddingssize",value=embeddingssize)
@@ -470,7 +524,7 @@ def main():
 
         # Onglets
          # Onglets
-        tab1, tab2, tab3, tab4  = st.tabs(["Configuration", "Loading file", "Chat with your data","made by " ])
+        tab1, tab2, tab3, tab4 , tab5 = st.tabs(["Configuration", "Loading file", "Chat with your data","list of file load  ","Load data from argus accelerator"])
 
 
         with tab1:
@@ -497,8 +551,11 @@ def main():
   
 
         with tab2:
-            st.header("Chargement de document ")
-        
+            st.header("Load documents ")
+            
+           
+     
+            
             uploaded_file = st.file_uploader("Choose your file to upload", type=["pdf", "docx","csv", "ppt","xls","xlsx" ,"pptx", "json"])
             if uploaded_file is not None:
                 st.write("File selected: ", uploaded_file.name)
@@ -510,7 +567,7 @@ def main():
             # Obtenir le chemin absolu du fichier
                 absolute_file_path = os.path.abspath(uploaded_file.name)
                 st.write(f"the file is  : {absolute_file_path}")
-                
+            
                 
                 if st.button("load data "):
                     st.write("start the operation")
@@ -558,7 +615,11 @@ def main():
          
         with tab3:
             st.header("Chat")
-       
+            
+            if st.button("clear the cache  "):
+                st.write("start clear the Cache")
+                clearcache(dbname,user,password,host,port)
+                st.write("Cache cleared.")
                 
             st.write("Chatbot goes here")
             if "messages" not in st.session_state:
@@ -569,7 +630,7 @@ def main():
                 st.chat_message(msg["role"]).write(msg["content"])
            
                           
-            if prompt := st.chat_input(placeholder="groupama"):
+            if prompt := st.chat_input(placeholder="enter your ask here"):
                 st.session_state.messages.append({"role": "user", "content": prompt})
                 st.chat_message("user").write(prompt)
                 with st.chat_message("assistant"):
@@ -593,24 +654,69 @@ def main():
    
             
         with tab4:
+            
+            if st.button("show file loads  "):
+                
+                  
+                st.write(f"LIST OF FILE LOAD ")         
+                conn = get_db_connection(dbname,user,password,host,port)
+                cur = conn.cursor()
+                query = f"""SELECT DISTINCT filename FROM data;"""
+                cur.execute(query)
+                resutls = str(cur.fetchall())
+                st.write(resutls) 
+                
+                
+          
+            
             st.write("made by emmanuel deletang in case of need contact him at edeletang@microsoft.com")
+            
+        with tab5:
+            st.write("load the data and connect the data from argus accelerator")
+            st.write("result Getting data from ARGUS ACCELERATOR : https://github.com/Azure-Samples/ARGUS")
+            argusdb = st.text_input("your Argus cosmosdb database", "doc-extracts")
+            argusurl = st.text_input("your Argus csomsodb URI", "http... ")
+            arguskey = st.text_input("your Argus csomsodb key", "xxxx... ")
+            arguscollection = st.text_input("your Argus cosmosdb collection source", "documents")
+            
+            if st.button("load the data "):
+                if arguscollection == None or arguskey == None or argusurl == None : 
+                    st.write ( "parameters non correct , please entry your key , url and colleciton")
+                else:
+                    total = loaddataargus( argusdb,arguscollection , argusurl,arguskey, dbname,user,password,host,port) 
+                    st.write("Total count of data loaded from argus source : ", total)
+                   
                 
         
     else:
         # Formulaire de connexion
       
         username_input = st.text_input("Nom d'utilisateur")
+        email_input = st.text_input("Email")
+        country_input = st.text_input("country")
        
 
         if st.button("Connexion"):
             if authenticate(username_input):
                 st.session_state.logged_in = True
                 st.session_state.username = username_input
+                conn = get_db_connection(dbname,user,password,host,port)
+                cur = conn.cursor()
+                cur.execute('INSERT INTO userapp (username, email,country)'
+                'VALUES (%s, %s,%s)',
+                (username_input,email_input,country_input)
+                )
+                conn.commit()
+                cur.close()
+                conn.close()
+                
+                
+                
                 st.rerun()
             else:
                 st.error("Nom d'utilisateur ou mot de passe incorrect")
 
 
 if __name__ == "__main__":
-    print("main")
+  
     main()
